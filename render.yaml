@@ -9,10 +9,10 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
-      - key: TRANSFORMERS_CACHE
-        value: /tmp/transformers_cache
       - key: HF_HOME
         value: /tmp/huggingface
       - key: PIP_NO_CACHE_DIR
         value: "1"
+      - key: HF_API_TOKEN
+        sync: false
     autoDeploy: true
