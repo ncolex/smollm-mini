@@ -13,4 +13,6 @@ services:
         value: /tmp/transformers_cache
       - key: HF_HOME
         value: /tmp/huggingface
+      - key: PIP_NO_CACHE_DIR
+        value: "1"
     autoDeploy: true
