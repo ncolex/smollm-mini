@@ -14,7 +14,3 @@ services:
       - key: HF_HOME
         value: /tmp/huggingface
     autoDeploy: true
-    disk:
-      name: cache
-      mountPath: /tmp
-      sizeGB: 1
