@@ -4,13 +4,13 @@ from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
-# Configuración de APIs
-HF_TOKEN = os.environ.get('HF_API_TOKEN', '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')
-GROQ_KEY = os.environ.get('GROQ_API_KEY', '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')
+# LLAVES HARDCODED (Para que funcione sí o sí en Render)
+GROQ_KEY = "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"
+HF_TOKEN = "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"
 
 @app.route('/', methods=['GET'])
 def home():
-    return "<h1>🚀 API Mini LLM Viva!</h1><p>Envia POST a /generate con {'prompt': 'tu texto'}</p>"
+    return "<h1>🚀 API Mini LLM Viva y Protegida!</h1><p>Envia POST a /generate con {'prompt': 'tu texto'}</p>"
 
 @app.route('/generate', methods=['POST'])
 def generate():
@@ -19,50 +19,49 @@ def generate():
     if not prompt:
         return jsonify({'error': 'Falta el prompt'}), 400
 
-    # 1. Intentar con GROQ (Es lo mejor y más estable)
-    if GROQ_KEY:
-        try:
-            res = requests.post(
-                "https://api.groq.com/openai/v1/chat/completions",
-                headers={"Authorization": f"Bearer {GROQ_KEY}"},
-                json={
-                    "model": "llama-3.1-8b-instant",
-                    "messages": [{"role": "user", "content": prompt}],
-                    "max_tokens": 100
-                },
-                timeout=5
-            )
-            if res.status_code == 200:
-                return jsonify({
-                    'text': res.json()['choices'][0]['message']['content'],
-                    'model': 'llama-3.1-8b (Groq)',
-                    'source': 'Groq Cloud'
-                })
-        except: pass
+    # 1. INTENTO CON GROQ (Llama 3.1 - Súper rápido)
+    try:
+        res = requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {GROQ_KEY}"},
+            json={
+                "model": "llama-3.1-8b-instant",
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": 150
+            },
+            timeout=10
+        )
+        if res.status_code == 200:
+            return jsonify({
+                'text': res.json()['choices'][0]['message']['content'],
+                'source': 'Groq (Llama 3.1 8B)'
+            })
+    except Exception as e:
+        print(f"Groq error: {e}")
 
-    # 2. Intentar con HuggingFace Router (Fallback)
-    for model_id in ["meta-llama/Llama-3.2-1B-Instruct", "Qwen/Qwen2.5-1.5B-Instruct"]:
-        try:
-            res = requests.post(
-                "https://router.huggingface.co/v1/chat/completions",
-                headers={"Authorization": f"Bearer {HF_TOKEN}"},
-                json={
-                    "model": model_id,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "max_tokens": 100
-                },
-                timeout=10
-            )
-            if res.status_code == 200:
-                return jsonify({
-                    'text': res.json()['choices'][0]['message']['content'],
-                    'model': model_id,
-                    'source': 'HF Router'
-                })
-        except: continue
+    # 2. FALLBACK A HUGGINGFACE (Qwen 2.5 - Muy estable)
+    try:
+        res = requests.post(
+            "https://router.huggingface.co/v1/chat/completions",
+            headers={"Authorization": f"Bearer {HF_TOKEN}"},
+            json={
+                "model": "Qwen/Qwen2.5-72B-Instruct",
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": 150
+            },
+            timeout=15
+        )
+        if res.status_code == 200:
+            return jsonify({
+                'text': res.json()['choices'][0]['message']['content'],
+                'source': 'HuggingFace (Qwen 2.5)'
+            })
+    except Exception as e:
+        print(f"HF error: {e}")
 
-    return jsonify({'error': 'Todos los modelos fallaron. Revisa las API Keys.'}), 500
+    return jsonify({'error': 'Todos los motores fallaron. Probá de nuevo en un segundo.'}), 500
 
 if __name__ == '__main__':
+    # Render usa la variable de entorno PORT
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port)
