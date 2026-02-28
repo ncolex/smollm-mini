@@ -306,6 +306,9 @@
     </div>
     
     <script>
+        // Usar proxy local para evitar CORS
+        const API_BASE = '/api';
+        
         let OLLAMA_URL = localStorage.getItem('ollama_url') || 'http://localhost:11434';
         let autoRefresh = true;
         let refreshInterval;
@@ -316,7 +319,7 @@
         let lastRequestTime = Date.now();
         
         document.getElementById('setting-url').value = OLLAMA_URL;
-        document.getElementById('conn-url').textContent = OLLAMA_URL;
+        document.getElementById('conn-url').textContent = window.location.origin;
         
         function switchTab(tabId) {
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -387,7 +390,7 @@
             text.textContent = 'Verificando...';
             
             try {
-                const res = await fetch(`${OLLAMA_URL}/api/tags`);
+                const res = await fetch(`${API_BASE}/tags`);
                 const latency = Math.round(performance.now() - startTime);
                 
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
