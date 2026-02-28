@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ollama Status 🔥</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { 
+            font-family: system-ui, -apple-system, sans-serif; 
+            max-width: 900px; 
+            margin: 0 auto; 
+            padding: 20px;
+            background: #0d1117;
+            color: #c9d1d9;
+        }
+        h1 { color: #58a6ff; margin-bottom: 10px; }
+        .status-card {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .status-header { display: flex; justify-content: space-between; align-items: center; }
+        .status-badge {
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: bold;
+        }
+        .status-online { background: #238636; color: white; }
+        .status-offline { background: #da3633; color: white; }
+        .status-loading { background: #d29922; color: black; }
+        button { 
+            background: #238636; 
+            color: white; 
+            border: none; 
+            padding: 10px 20px; 
+            font-size: 14px; 
+            cursor: pointer; 
+            border-radius: 6px;
+            margin: 5px;
+        }
+        button:hover { background: #2ea043; }
+        button.secondary { background: #30363d; }
+        button.secondary:hover { background: #484f58; }
+        .model-list { list-style: none; padding: 0; }
+        .model-item {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            padding: 15px;
+            margin: 10px 0;
+        }
+        .model-name { color: #58a6ff; font-weight: bold; font-size: 16px; }
+        .model-details { color: #8b949e; font-size: 13px; margin-top: 5px; }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        .stat-box {
+            background: #0d1117;
+            padding: 15px;
+            border-radius: 6px;
+            text-align: center;
+        }
+        .stat-value { font-size: 24px; font-weight: bold; color: #58a6ff; }
+        .stat-label { font-size: 12px; color: #8b949e; margin-top: 5px; }
+        #error-msg { color: #f85149; margin-top: 10px; }
+        .refresh-info { color: #8b949e; font-size: 12px; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <h1>🦙 Ollama Status</h1>
+    
+    <div class="status-card">
+        <div class="status-header">
+            <h2>Estado del Servicio</h2>
+            <span id="status-badge" class="status-badge status-loading">Cargando...</span>
+        </div>
+        <p id="status-text">Verificando conexión con Ollama...</p>
+        <div>
+            <button onclick="checkStatus()">🔄 Refresh</button>
+            <button class="secondary" onclick="toggleAutoRefresh()">⏱️ Auto: <span id="auto-status">ON</span></button>
+        </div>
+        <p id="error-msg"></p>
+        <p class="refresh-info">Última actualización: <span id="last-update">-</span></p>
+    </div>
+
+    <div class="status-card" id="stats-card" style="display: none;">
+        <h2>📊 Estadísticas</h2>
+        <div class="stats-grid">
+            <div class="stat-box">
+                <div class="stat-value" id="stat-models">0</div>
+                <div class="stat-label">Modelos</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-value" id="stat-size">0 GB</div>
+                <div class="stat-label">Tamaño Total</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-value" id="stat-running">0</div>
+                <div class="stat-label">Modelos en Memoria</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="status-card" id="models-card" style="display: none;">
+        <h2>📦 Modelos Instalados</h2>
+        <ul class="model-list" id="model-list"></ul>
+    </div>
+
+    <script>
+        const OLLAMA_URL = 'http://localhost:11434';
+        let autoRefresh = true;
+        let refreshInterval;
+
+        async function checkStatus() {
+            const badge = document.getElementById('status-badge');
+            const text = document.getElementById('status-text');
+            const errorMsg = document.getElementById('error-msg');
+            const modelsCard = document.getElementById('models-card');
+            const statsCard = document.getElementById('stats-card');
+            const modelList = document.getElementById('model-list');
+            const lastUpdate = document.getElementById('last-update');
+
+            badge.className = 'status-badge status-loading';
+            badge.textContent = 'Verificando...';
+            errorMsg.textContent = '';
+
+            try {
+                const res = await fetch(`${OLLAMA_URL}/api/tags`);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                
+                const data = await res.json();
+                
+                // Status OK
+                badge.className = 'status-badge status-online';
+                badge.textContent = '● Online';
+                text.textContent = `Ollama está corriendo en ${OLLAMA_URL}`;
+                
+                // Mostrar tarjetas
+                modelsCard.style.display = 'block';
+                statsCard.style.display = 'block';
+                
+                // Limpiar lista
+                modelList.innerHTML = '';
+                
+                // Estadísticas
+                const models = data.models || [];
+                document.getElementById('stat-models').textContent = models.length;
+                
+                let totalSize = 0;
+                models.forEach(m => totalSize += m.size || 0);
+                document.getElementById('stat-size').textContent = (totalSize / (1024**3)).toFixed(2) + ' GB';
+                
+                // Lista de modelos
+                if (models.length === 0) {
+                    modelList.innerHTML = '<li class="model-item">No hay modelos instalados. Ejecutá: <code>ollama pull <nombre></code></li>';
+                    document.getElementById('stat-running').textContent = '0';
+                } else {
+                    models.forEach(model => {
+                        const sizeGB = (model.size / (1024**3)).toFixed(2);
+                        const modified = new Date(model.modified_at).toLocaleString('es-AR');
+                        const li = document.createElement('li');
+                        li.className = 'model-item';
+                        li.innerHTML = `
+                            <div class="model-name">${model.name}</div>
+                            <div class="model-details">
+                                Tamaño: ${sizeGB} GB • 
+                                Familia: ${model.details?.family || 'N/A'} • 
+                                Parámetros: ${model.details?.parameter_size || 'N/A'} • 
+                                Modificado: ${modified}
+                            </div>
+                        `;
+                        modelList.appendChild(li);
+                    });
+                    document.getElementById('stat-running').textContent = models.length;
+                }
+                
+                lastUpdate.textContent = new Date().toLocaleTimeString('es-AR');
+                
+            } catch (e) {
+                badge.className = 'status-badge status-offline';
+                badge.textContent = '● Offline';
+                text.textContent = 'No se pudo conectar con Ollama';
+                errorMsg.textContent = `Error: ${e.message}. Asegurate de que Ollama esté corriendo (ejecutá 'ollama serve')`;
+                modelsCard.style.display = 'none';
+                statsCard.style.display = 'none';
+            }
+        }
+
+        function toggleAutoRefresh() {
+            autoRefresh = !autoRefresh;
+            document.getElementById('auto-status').textContent = autoRefresh ? 'ON' : 'OFF';
+            
+            if (autoRefresh) {
+                refreshInterval = setInterval(checkStatus, 5000);
+            } else {
+                clearInterval(refreshInterval);
+            }
+        }
+
+        // Iniciar
+        checkStatus();
+        refreshInterval = setInterval(checkStatus, 5000);
+    </script>
+</body>
+</html>
