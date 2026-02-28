@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ollama Dashboard 🔥</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { 
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; 
+            background: #0d1117;
+            color: #c9d1d9;
+            padding: 20px;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #30363d;
+        }
+        .header h1 { color: #58a6ff; }
+        .header-actions button {
+            background: #238636;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-left: 8px;
+            font-size: 13px;
+        }
+        .header-actions button:hover { background: #2ea043; }
+        .header-actions button.danger { background: #da3633; }
+        .header-actions button.danger:hover { background: #f85149; }
+        
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .card {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 16px;
+        }
+        .card h3 {
+            color: #8b949e;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 12px;
+        }
+        
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        .status-dot.online { background: #3fb950; }
+        .status-dot.offline { background: #f85149; }
+        .status-dot.loading { background: #d29922; }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .stat-big {
+            font-size: 36px;
+            font-weight: bold;
+            color: #58a6ff;
+        }
+        .stat-sub { color: #8b949e; font-size: 13px; margin-top: 5px; }
+        
+        .connection-info {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        .conn-item {
+            background: #0d1117;
+            padding: 10px;
+            border-radius: 6px;
+        }
+        .conn-label { color: #8b949e; font-size: 11px; }
+        .conn-value { color: #c9d1d9; font-size: 14px; font-weight: 500; }
+        
+        .model-list {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .model-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            background: #0d1117;
+            border-radius: 6px;
+            margin-bottom: 8px;
+        }
+        .model-info h4 { color: #58a6ff; font-size: 14px; }
+        .model-info p { color: #8b949e; font-size: 12px; margin-top: 4px; }
+        .model-actions button {
+            background: #30363d;
+            color: #c9d1d9;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .model-actions button:hover { background: #484f58; }
+        
+        .requests-log {
+            max-height: 250px;
+            overflow-y: auto;
+            font-family: 'Consolas', monospace;
+            font-size: 12px;
+        }
+        .request-item {
+            padding: 8px;
+            border-left: 3px solid #238636;
+            background: #0d1117;
+            margin-bottom: 6px;
+            border-radius: 0 4px 4px 0;
+        }
+        .request-item.error { border-left-color: #f85149; }
+        .request-time { color: #8b949e; font-size: 11px; }
+        .request-method { color: #58a6ff; font-weight: bold; }
+        .request-path { color: #c9d1d9; }
+        .request-status { float: right; padding: 2px 8px; border-radius: 4px; font-size: 11px; }
+        .request-status.ok { background: #238636; }
+        .request-status.err { background: #da3633; }
+        
+        .chart-container {
+            height: 100px;
+            display: flex;
+            align-items: flex-end;
+            gap: 4px;
+            padding-top: 20px;
+        }
+        .chart-bar {
+            flex: 1;
+            background: linear-gradient(to top, #238636, #2ea043);
+            border-radius: 2px 2px 0 0;
+            min-height: 4px;
+            transition: height 0.3s;
+        }
+        
+        .settings-form label {
+            display: block;
+            color: #8b949e;
+            font-size: 12px;
+            margin-bottom: 5px;
+        }
+        .settings-form input {
+            width: 100%;
+            padding: 8px 12px;
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            color: #c9d1d9;
+            font-size: 14px;
+            margin-bottom: 12px;
+        }
+        .settings-form input:focus {
+            outline: none;
+            border-color: #58a6ff;
+        }
+        
+        .tab-container { margin-bottom: 20px; }
+        .tabs { display: flex; gap: 5px; border-bottom: 1px solid #30363d; padding-bottom: 10px; }
+        .tab {
+            padding: 8px 16px;
+            background: transparent;
+            border: none;
+            color: #8b949e;
+            cursor: pointer;
+            border-radius: 6px 6px 0 0;
+            font-size: 13px;
+        }
+        .tab:hover { color: #c9d1d9; background: #161b22; }
+        .tab.active { color: #58a6ff; background: #161b22; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #0d1117; }
+        ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #484f58; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🦙 Ollama Dashboard</h1>
+        <div class="header-actions">
+            <button onclick="refreshAll()">🔄 Refresh</button>
+            <button onclick="toggleAutoRefresh()">⏱️ Auto: <span id="auto-status">ON</span></button>
+            <button class="danger" onclick="clearLogs()">🗑️ Clear Logs</button>
+        </div>
+    </div>
+    
+    <div class="tab-container">
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab('overview')">📊 Overview</button>
+            <button class="tab" onclick="switchTab('models')">📦 Modelos</button>
+            <button class="tab" onclick="switchTab('requests')">📝 Requests Log</button>
+            <button class="tab" onclick="switchTab('settings')">⚙️ Settings</button>
+        </div>
+        
+        <div id="overview" class="tab-content active">
+            <div class="dashboard-grid">
+                <div class="card">
+                    <h3>Estado del Servicio</h3>
+                    <div class="status-indicator">
+                        <div class="status-dot" id="status-dot"></div>
+                        <span id="status-text">Cargando...</span>
+                    </div>
+                    <p class="stat-sub" id="status-sub">Verificando conexión...</p>
+                </div>
+                
+                <div class="card">
+                    <h3>Modelos Instalados</h3>
+                    <div class="stat-big" id="stat-models">0</div>
+                    <p class="stat-sub">Total en sistema</p>
+                </div>
+                
+                <div class="card">
+                    <h3>Uso de Disco</h3>
+                    <div class="stat-big" id="stat-size">0 GB</div>
+                    <p class="stat-sub">Espacio utilizado</p>
+                </div>
+                
+                <div class="card">
+                    <h3>Latencia Promedio</h3>
+                    <div class="stat-big" id="stat-latency">-- ms</div>
+                    <p class="stat-sub">Últimas 10 requests</p>
+                </div>
+            </div>
+            
+            <div class="dashboard-grid">
+                <div class="card">
+                    <h3>Información de Conexión</h3>
+                    <div class="connection-info">
+                        <div class="conn-item">
+                            <div class="conn-label">URL Base</div>
+                            <div class="conn-value" id="conn-url">--</div>
+                        </div>
+                        <div class="conn-item">
+                            <div class="conn-label">Versión API</div>
+                            <div class="conn-value" id="conn-version">--</div>
+                        </div>
+                        <div class="conn-item">
+                            <div class="conn-label">Último Check</div>
+                            <div class="conn-value" id="conn-lastcheck">--</div>
+                        </div>
+                        <div class="conn-item">
+                            <div class="conn-label">Requests Totales</div>
+                            <div class="conn-value" id="conn-totalreq">0</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <h3>Requests por Segundo (últimos 30s)</h3>
+                    <div class="chart-container" id="rps-chart"></div>
+                </div>
+            </div>
+        </div>
+        
+        <div id="models" class="tab-content">
+            <div class="card">
+                <h3>Modelos Disponibles</h3>
+                <div class="model-list" id="model-list"></div>
+            </div>
+        </div>
+        
+        <div id="requests" class="tab-content">
+            <div class="card">
+                <h3>Historial de Requests</h3>
+                <div class="requests-log" id="requests-log"></div>
+            </div>
+        </div>
+        
+        <div id="settings" class="tab-content">
+            <div class="card">
+                <h3>Configuración de Conexión</h3>
+                <div class="settings-form">
+                    <label>Ollama URL</label>
+                    <input type="text" id="setting-url" value="http://localhost:11434">
+                    <button onclick="saveSettings()">Guardar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let OLLAMA_URL = localStorage.getItem('ollama_url') || 'http://localhost:11434';
+        let autoRefresh = true;
+        let refreshInterval;
+        let requestCount = 0;
+        let totalRequests = parseInt(localStorage.getItem('ollama_total_requests') || '0');
+        let latencies = [];
+        let rpsHistory = new Array(30).fill(0);
+        let lastRequestTime = Date.now();
+        
+        document.getElementById('setting-url').value = OLLAMA_URL;
+        document.getElementById('conn-url').textContent = OLLAMA_URL;
+        
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            document.querySelector(`[onclick="switchTab('${tabId}')"]`).classList.add('active');
+            document.getElementById(tabId).classList.add('active');
+        }
+        
+        function logRequest(method, path, status, latency, isError = false) {
+            requestCount++;
+            totalRequests++;
+            latencies.push(latency);
+            if (latencies.length > 10) latencies.shift();
+            
+            const log = document.getElementById('requests-log');
+            const item = document.createElement('div');
+            item.className = `request-item ${isError ? 'error' : ''}`;
+            item.innerHTML = `
+                <span class="request-status ${isError ? 'err' : 'ok'}">${status}</span>
+                <span class="request-time">${new Date().toLocaleTimeString('es-AR')}</span>
+                <span class="request-method">${method}</span>
+                <span class="request-path">${path}</span>
+                <span style="color: #8b949e; margin-left: 10px;">${latency}ms</span>
+            `;
+            log.insertBefore(item, log.firstChild);
+            
+            if (log.children.length > 100) log.removeChild(log.lastChild);
+            
+            localStorage.setItem('ollama_total_requests', totalRequests);
+            document.getElementById('conn-totalreq').textContent = totalRequests;
+            updateLatency();
+        }
+        
+        function updateLatency() {
+            if (latencies.length === 0) return;
+            const avg = Math.round(latencies.reduce((a, b) => a + b, 0) / latencies.length);
+            document.getElementById('stat-latency').textContent = avg + ' ms';
+        }
+        
+        function updateRPSChart() {
+            const now = Date.now();
+            const elapsed = (now - lastRequestTime) / 1000;
+            if (elapsed >= 1) {
+                rpsHistory.shift();
+                rpsHistory.push(requestCount);
+                requestCount = 0;
+                lastRequestTime = now;
+            }
+            
+            const chart = document.getElementById('rps-chart');
+            chart.innerHTML = '';
+            const max = Math.max(...rpsHistory, 1);
+            rpsHistory.forEach(val => {
+                const bar = document.createElement('div');
+                bar.className = 'chart-bar';
+                bar.style.height = (val / max * 100) + 'px';
+                chart.appendChild(bar);
+            });
+        }
+        
+        async function checkStatus() {
+            const startTime = performance.now();
+            const dot = document.getElementById('status-dot');
+            const text = document.getElementById('status-text');
+            const sub = document.getElementById('status-sub');
+            
+            dot.className = 'status-dot loading';
+            text.textContent = 'Verificando...';
+            
+            try {
+                const res = await fetch(`${OLLAMA_URL}/api/tags`);
+                const latency = Math.round(performance.now() - startTime);
+                
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                
+                const data = await res.json();
+                
+                dot.className = 'status-dot online';
+                text.textContent = 'Online';
+                sub.textContent = `Respuesta en ${latency}ms`;
+                
+                logRequest('GET', '/api/tags', res.status, latency, false);
+                
+                // Actualizar stats
+                const models = data.models || [];
+                document.getElementById('stat-models').textContent = models.length;
+                
+                let totalSize = 0;
+                models.forEach(m => totalSize += m.size || 0);
+                document.getElementById('stat-size').textContent = (totalSize / (1024**3)).toFixed(2) + ' GB';
+                
+                document.getElementById('conn-lastcheck').textContent = new Date().toLocaleTimeString('es-AR');
+                
+                // Render modelos
+                renderModels(models);
+                
+            } catch (e) {
+                const latency = Math.round(performance.now() - startTime);
+                dot.className = 'status-dot offline';
+                text.textContent = 'Offline';
+                sub.textContent = 'No se pudo conectar';
+                
+                logRequest('GET', '/api/tags', 'ERROR', latency, true);
+                
+                document.getElementById('model-list').innerHTML = `
+                    <div class="model-item" style="justify-content: center; color: #f85149;">
+                        No se pudo conectar con Ollama. Asegurate de que esté corriendo.
+                    </div>
+                `;
+            }
+            
+            updateRPSChart();
+        }
+        
+        function renderModels(models) {
+            const list = document.getElementById('model-list');
+            if (models.length === 0) {
+                list.innerHTML = `
+                    <div class="model-item" style="justify-content: center; color: #8b949e;">
+                        No hay modelos instalados. Ejecutá: ollama pull <nombre>
+                    </div>
+                `;
+                return;
+            }
+            
+            list.innerHTML = '';
+            models.forEach(model => {
+                const sizeGB = (model.size / (1024**3)).toFixed(2);
+                const modified = new Date(model.modified_at).toLocaleDateString('es-AR');
+                const item = document.createElement('div');
+                item.className = 'model-item';
+                item.innerHTML = `
+                    <div class="model-info">
+                        <h4>${model.name}</h4>
+                        <p>
+                            ${sizeGB} GB • 
+                            ${model.details?.family || 'N/A'} • 
+                            ${model.details?.parameter_size || 'N/A'} params • 
+                            Mod: ${modified}
+                        </p>
+                    </div>
+                    <div class="model-actions">
+                        <button onclick="copyModel('${model.name}')">📋 Copiar nombre</button>
+                    </div>
+                `;
+                list.appendChild(item);
+            });
+        }
+        
+        function copyModel(name) {
+            navigator.clipboard.writeText(name);
+            alert(`Modelo "${name}" copiado al portapapeles`);
+        }
+        
+        function refreshAll() {
+            checkStatus();
+        }
+        
+        function toggleAutoRefresh() {
+            autoRefresh = !autoRefresh;
+            document.getElementById('auto-status').textContent = autoRefresh ? 'ON' : 'OFF';
+            
+            if (autoRefresh) {
+                refreshInterval = setInterval(refreshAll, 2000);
+            } else {
+                clearInterval(refreshInterval);
+            }
+        }
+        
+        function clearLogs() {
+            document.getElementById('requests-log').innerHTML = '';
+            requestCount = 0;
+            latencies = [];
+            rpsHistory = new Array(30).fill(0);
+            document.getElementById('stat-latency').textContent = '-- ms';
+        }
+        
+        function saveSettings() {
+            const url = document.getElementById('setting-url').value;
+            OLLAMA_URL = url;
+            localStorage.setItem('ollama_url', url);
+            document.getElementById('conn-url').textContent = url;
+            alert('Configuración guardada. Refreshing...');
+            refreshAll();
+        }
+        
+        // Init RPS chart
+        const chart = document.getElementById('rps-chart');
+        for (let i = 0; i < 30; i++) {
+            const bar = document.createElement('div');
+            bar.className = 'chart-bar';
+            bar.style.height = '4px';
+            chart.appendChild(bar);
+        }
+        
+        // Start
+        document.getElementById('conn-totalreq').textContent = totalRequests;
+        refreshAll();
+        refreshInterval = setInterval(refreshAll, 2000);
+        setInterval(updateRPSChart, 1000);
+    </script>
+</body>
+</html>
