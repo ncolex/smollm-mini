@@ -1,16 +1,21 @@
 from flask import Flask, request, jsonify
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 import torch
+import gc
 
 app = Flask(__name__)
 
+# Cargar modelo al inicio (Render tiene 512MB en free)
+print("🔥 Cargando SmolLM2-135M en 4-bit...")
 quant_config = BitsAndBytesConfig(load_in_4bit=True)
 model = AutoModelForCausalLM.from_pretrained(
     "HuggingFaceTB/SmolLM2-135M",
     quantization_config=quant_config,
-    device_map="cpu"
+    device_map="auto",
+    low_cpu_mem_usage=True
 )
 tokenizer = AutoTokenizer.from_pretrained("HuggingFaceTB/SmolLM2-135M")
+print("✅ Modelo cargado!")
 
 @app.route('/', methods=['GET'])
 def home():
