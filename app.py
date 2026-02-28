@@ -4,16 +4,9 @@ from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
-# HuggingFace Settings
-# Usamos el nuevo ROUTER de HuggingFace que es el estándar ahora
-HF_ROUTER_URL = "https://router.huggingface.co/v1/chat/completions"
-HF_API_TOKEN = os.environ.get('HF_API_TOKEN', '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')
-
-MODELS = [
-    "HuggingFaceTB/SmolLM2-135M-Instruct",
-    "Qwen/Qwen2.5-0.5B-Instruct",
-    "microsoft/Phi-3-mini-4k-instruct"
-]
+# Configuración de APIs
+HF_TOKEN = os.environ.get('HF_API_TOKEN', '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')
+GROQ_KEY = os.environ.get('GROQ_API_KEY', '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')
 
 @app.route('/', methods=['GET'])
 def home():
@@ -26,28 +19,49 @@ def generate():
     if not prompt:
         return jsonify({'error': 'Falta el prompt'}), 400
 
-    # Intentar con cada modelo en el Router
-    for model_id in MODELS:
+    # 1. Intentar con GROQ (Es lo mejor y más estable)
+    if GROQ_KEY:
         try:
-            headers = {"Authorization": f"Bearer {HF_API_TOKEN}"}
-            payload = {
-                "model": model_id,
-                "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 100
-            }
-            res = requests.post(HF_ROUTER_URL, headers=headers, json=payload, timeout=10)
-            
+            res = requests.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {GROQ_KEY}"},
+                json={
+                    "model": "llama-3.1-8b-instant",
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": 100
+                },
+                timeout=5
+            )
             if res.status_code == 200:
-                result = res.json()
                 return jsonify({
-                    'text': result['choices'][0]['message']['content'],
+                    'text': res.json()['choices'][0]['message']['content'],
+                    'model': 'llama-3.1-8b (Groq)',
+                    'source': 'Groq Cloud'
+                })
+        except: pass
+
+    # 2. Intentar con HuggingFace Router (Fallback)
+    for model_id in ["meta-llama/Llama-3.2-1B-Instruct", "Qwen/Qwen2.5-1.5B-Instruct"]:
+        try:
+            res = requests.post(
+                "https://router.huggingface.co/v1/chat/completions",
+                headers={"Authorization": f"Bearer {HF_TOKEN}"},
+                json={
+                    "model": model_id,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": 100
+                },
+                timeout=10
+            )
+            if res.status_code == 200:
+                return jsonify({
+                    'text': res.json()['choices'][0]['message']['content'],
                     'model': model_id,
                     'source': 'HF Router'
                 })
-        except Exception as e:
-            continue
+        except: continue
 
-    return jsonify({'error': 'No se pudo generar respuesta. Verifica el HF_API_TOKEN en Render.'}), 500
+    return jsonify({'error': 'Todos los modelos fallaron. Revisa las API Keys.'}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
