@@ -11,6 +11,7 @@ HF_API_TOKEN = os.environ.get('HF_API_TOKEN', 'hf_cBobmFuwwaOPIWWDxXSOAjqSZvuyJN
 HF_MODELS = [
     "HuggingFaceTB/SmolLM2-135M-Instruct",
     "Qwen/Qwen2.5-0.5B-Instruct",
+    "microsoft/Phi-3-mini-4k-instruct",
     "gpt2"
 ]
 
