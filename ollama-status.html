@@ -114,7 +114,7 @@
     </div>
 
     <script>
-        const OLLAMA_URL = 'http://localhost:11434';
+        const API_BASE = '/api';
         let autoRefresh = true;
         let refreshInterval;
 
@@ -132,7 +132,7 @@
             errorMsg.textContent = '';
 
             try {
-                const res = await fetch(`${OLLAMA_URL}/api/tags`);
+                const res = await fetch(`${API_BASE}/tags`);
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
                 
                 const data = await res.json();

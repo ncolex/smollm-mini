@@ -1,23 +1,8 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
 venv/
-ENV/
-env/
-.venv
-
-# IDE
+__pycache__/
+*.pyc
+.env
+.pytest_cache/
 .vscode/
 .idea/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Logs
 *.log
