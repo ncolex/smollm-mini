@@ -1,5 +1,5 @@
 flask==3.0.0
-transformers==4.37.0
+transformers==4.50.0
 torch==2.9.0
 bitsandbytes==0.45.0
 accelerate==1.4.0
