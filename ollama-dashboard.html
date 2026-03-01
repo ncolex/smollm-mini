@@ -143,6 +143,40 @@
         .request-status.ok { background: #238636; }
         .request-status.err { background: #da3633; }
         
+        /* Heartbeat Styles */
+        .heartbeat-feed {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .heartbeat-card {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 15px;
+            border-left: 4px solid #a371f7;
+        }
+        .heartbeat-meta {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            font-size: 12px;
+            color: #8b949e;
+        }
+        .heartbeat-source {
+            background: #30363d;
+            padding: 2px 8px;
+            border-radius: 4px;
+            color: #c9d1d9;
+        }
+        .heartbeat-content {
+            font-family: 'Consolas', monospace;
+            font-size: 13px;
+            line-height: 1.5;
+            color: #c9d1d9;
+            white-space: pre-wrap;
+        }
+
         .chart-container {
             height: 100px;
             display: flex;
@@ -203,7 +237,7 @@
 </head>
 <body>
     <div class="header">
-        <h1>🦙 Ollama Dashboard</h1>
+        <h1>🦙 Ollama + OpenClaw Node</h1>
         <div class="header-actions">
             <button onclick="refreshAll()">🔄 Refresh</button>
             <button onclick="toggleAutoRefresh()">⏱️ Auto: <span id="auto-status">ON</span></button>
@@ -214,6 +248,7 @@
     <div class="tab-container">
         <div class="tabs">
             <button class="tab active" onclick="switchTab('overview')">📊 Overview</button>
+            <button class="tab" onclick="switchTab('heartbeat')">❤️ Heartbeat (33m)</button>
             <button class="tab" onclick="switchTab('models')">📦 Modelos</button>
             <button class="tab" onclick="switchTab('requests')">📝 Requests Log</button>
             <button class="tab" onclick="switchTab('settings')">⚙️ Settings</button>
@@ -258,8 +293,8 @@
                             <div class="conn-value" id="conn-url">--</div>
                         </div>
                         <div class="conn-item">
-                            <div class="conn-label">Versión API</div>
-                            <div class="conn-value" id="conn-version">--</div>
+                            <div class="conn-label">Nodo Remoto</div>
+                            <div class="conn-value" style="color: #a371f7;">smollm-mini</div>
                         </div>
                         <div class="conn-item">
                             <div class="conn-label">Último Check</div>
@@ -275,6 +310,14 @@
                 <div class="card">
                     <h3>Requests por Segundo (últimos 30s)</h3>
                     <div class="chart-container" id="rps-chart"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="heartbeat" class="tab-content">
+            <div class="heartbeat-feed" id="heartbeat-feed">
+                <div class="card" style="text-align: center; color: #8b949e;">
+                    Esperando primer latido del nodo (cada 33 min)...
                 </div>
             </div>
         </div>
@@ -380,6 +423,31 @@
             });
         }
         
+        async function checkHeartbeat() {
+            try {
+                const res = await fetch(`${API_BASE}/heartbeat`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.length > 0) {
+                        const feed = document.getElementById('heartbeat-feed');
+                        feed.innerHTML = '';
+                        data.forEach(h => {
+                            const card = document.createElement('div');
+                            card.className = 'heartbeat-card';
+                            card.innerHTML = `
+                                <div class="heartbeat-meta">
+                                    <span>🕒 ${h.time}</span>
+                                    <span class="heartbeat-source">🚀 ${h.source}</span>
+                                </div>
+                                <div class="heartbeat-content">${h.message}</div>
+                            `;
+                            feed.appendChild(card);
+                        });
+                    }
+                }
+            } catch (e) { console.error(e); }
+        }
+
         async function checkStatus() {
             const startTime = performance.now();
             const dot = document.getElementById('status-dot');
@@ -416,6 +484,9 @@
                 // Render modelos
                 renderModels(models);
                 
+                // Chequear heartbeat
+                checkHeartbeat();
+                
             } catch (e) {
                 const latency = Math.round(performance.now() - startTime);
                 dot.className = 'status-dot offline';
@@ -436,6 +507,9 @@
         
         function renderModels(models) {
             const list = document.getElementById('model-list');
+            // Evitar re-render si no hay cambios (simple check)
+            if (list.childElementCount === models.length && models.length > 0) return;
+
             if (models.length === 0) {
                 list.innerHTML = `
                     <div class="model-item" style="justify-content: center; color: #8b949e;">
@@ -483,7 +557,7 @@
             document.getElementById('auto-status').textContent = autoRefresh ? 'ON' : 'OFF';
             
             if (autoRefresh) {
-                refreshInterval = setInterval(refreshAll, 2000);
+                refreshInterval = setInterval(refreshAll, 5000); // 5s para no saturar
             } else {
                 clearInterval(refreshInterval);
             }
@@ -518,7 +592,7 @@
         // Start
         document.getElementById('conn-totalreq').textContent = totalRequests;
         refreshAll();
-        refreshInterval = setInterval(refreshAll, 2000);
+        refreshInterval = setInterval(refreshAll, 5000);
         setInterval(updateRPSChart, 1000);
     </script>
 </body>

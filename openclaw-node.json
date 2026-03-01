@@ -1,0 +1,8 @@
+{
+  "id": "smollm-render",
+  "type": "openai",
+  "endpoint": "https://smollm-mini.onrender.com/v1",
+  "apiKey": "dummy",
+  "enabled": true,
+  "models": ["smollm-mini"]
+}

@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify, send_from_directory
 import requests as req
 import os
+import json
 
 app = Flask(__name__)
 
@@ -13,6 +14,16 @@ def index():
 @app.route('/status')
 def status():
     return send_from_directory('.', 'ollama-status.html')
+
+@app.route('/api/heartbeat')
+def get_heartbeat():
+    try:
+        if os.path.exists('heartbeat.json'):
+            with open('heartbeat.json', 'r') as f:
+                return jsonify(json.load(f))
+        return jsonify([])
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/<path:endpoint>', methods=['GET', 'POST'])
 def proxy(endpoint):
