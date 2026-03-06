@@ -5,7 +5,7 @@ import json
 
 app = Flask(__name__)
 
-OLLAMA_URL = os.environ.get('OLLAMA_URL', 'http://localhost:11434')
+OLLAMA_URL = os.environ.get('OLLAMA_URL', 'http://localhost:11434').rstrip('/')
 
 @app.route('/')
 def index():
@@ -29,6 +29,19 @@ def get_heartbeat():
 def proxy(endpoint):
     try:
         url = f'{OLLAMA_URL}/api/{endpoint}'
+        if request.method == 'POST':
+            res = req.post(url, json=request.get_json() or {})
+        else:
+            res = req.get(url)
+        return jsonify(res.json()), res.status_code
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/v1/<path:endpoint>', methods=['GET', 'POST'])
+def proxy_v1(endpoint):
+    """Proxy para APIs OpenAI-compatibles como /v1/models y /v1/chat/completions."""
+    try:
+        url = f'{OLLAMA_URL}/v1/{endpoint}'
         if request.method == 'POST':
             res = req.post(url, json=request.get_json() or {})
         else:

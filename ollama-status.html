@@ -115,6 +115,7 @@
 
     <script>
         const API_BASE = '/api';
+        const TARGET_LABEL = window.location.origin;
         let autoRefresh = true;
         let refreshInterval;
 
@@ -140,7 +141,7 @@
                 // Status OK
                 badge.className = 'status-badge status-online';
                 badge.textContent = '● Online';
-                text.textContent = `Ollama está corriendo en ${OLLAMA_URL}`;
+                text.textContent = `Servicio disponible vía proxy en ${TARGET_LABEL}`;
                 
                 // Mostrar tarjetas
                 modelsCard.style.display = 'block';

@@ -362,7 +362,50 @@
         let lastRequestTime = Date.now();
         
         document.getElementById('setting-url').value = OLLAMA_URL;
-        document.getElementById('conn-url').textContent = window.location.origin;
+        document.getElementById('conn-url').textContent = OLLAMA_URL;
+
+        function normalizeModelsFromV1(data) {
+            const models = data?.data || [];
+            return models.map(m => ({
+                name: m.id,
+                size: 0,
+                modified_at: new Date((m.created || Math.floor(Date.now() / 1000)) * 1000).toISOString(),
+                details: {
+                    family: m.owned_by || 'OpenAI-compatible',
+                    parameter_size: 'N/A'
+                }
+            }));
+        }
+
+        async function fetchModelsWithFallback() {
+            // 1) Ollama nativo
+            const ollamaRes = await fetch(`${API_BASE}/tags`);
+            if (ollamaRes.ok) {
+                const payload = await ollamaRes.json();
+                return {
+                    ok: true,
+                    models: payload.models || [],
+                    sourceLabel: 'Ollama /api/tags',
+                    statusCode: ollamaRes.status,
+                    requestPath: '/api/tags'
+                };
+            }
+
+            // 2) OpenAI-compatible (ej: smollm-mini)
+            const v1Res = await fetch('/v1/models');
+            if (v1Res.ok) {
+                const payload = await v1Res.json();
+                return {
+                    ok: true,
+                    models: normalizeModelsFromV1(payload),
+                    sourceLabel: 'OpenAI /v1/models',
+                    statusCode: v1Res.status,
+                    requestPath: '/v1/models'
+                };
+            }
+
+            throw new Error(`Sin respuesta válida: /api/tags(${ollamaRes.status}) y /v1/models(${v1Res.status})`);
+        }
         
         function switchTab(tabId) {
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -458,21 +501,17 @@
             text.textContent = 'Verificando...';
             
             try {
-                const res = await fetch(`${API_BASE}/tags`);
+                const modelData = await fetchModelsWithFallback();
                 const latency = Math.round(performance.now() - startTime);
-                
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                
-                const data = await res.json();
-                
+
                 dot.className = 'status-dot online';
                 text.textContent = 'Online';
-                sub.textContent = `Respuesta en ${latency}ms`;
+                sub.textContent = `${modelData.sourceLabel} en ${latency}ms`;
                 
-                logRequest('GET', '/api/tags', res.status, latency, false);
+                logRequest('GET', modelData.requestPath, modelData.statusCode, latency, false);
                 
                 // Actualizar stats
-                const models = data.models || [];
+                const models = modelData.models || [];
                 document.getElementById('stat-models').textContent = models.length;
                 
                 let totalSize = 0;
@@ -493,7 +532,7 @@
                 text.textContent = 'Offline';
                 sub.textContent = 'No se pudo conectar';
                 
-                logRequest('GET', '/api/tags', 'ERROR', latency, true);
+                logRequest('GET', 'model-discovery', 'ERROR', latency, true);
                 
                 document.getElementById('model-list').innerHTML = `
                     <div class="model-item" style="justify-content: center; color: #f85149;">
