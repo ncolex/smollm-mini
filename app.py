@@ -7,6 +7,7 @@ app = Flask(__name__)
 
 HF_TOKEN = os.environ.get("HF_TOKEN", "")
 GROQ_KEY = os.environ.get("GROQ_KEY", "")
+HF_SPACE_URL = os.environ.get("HF_SPACE_URL", "")
 HF_BASE = "https://api-inference.huggingface.co/models"
 
 HOME_HTML = """
@@ -133,6 +134,33 @@ def _hf_call(model_id, prompt, max_tokens):
         return None
 
 
+def provider_gemma2(prompt, max_tokens):
+    """
+    P0 — Tu Gemma2-2B en HF Space.
+    Primario absoluto. Es tu modelo propio.
+    """
+    if not HF_SPACE_URL:
+        return None
+    print("[P0] Tu HF Space Gemma2-2B...")
+    try:
+        res = requests.post(
+            f"{HF_SPACE_URL.rstrip('/')}/generate",
+            json={"prompt": prompt, "max_tokens": max_tokens},
+            timeout=60
+        )
+        if res.status_code == 200:
+            data = res.json()
+            return {
+                "text": data.get("text", ""),
+                "source": data.get("source", "HF Space Gemma2-2B (tuyo)")
+            }
+        if res.status_code == 503:
+            print("[P0] Space cargando modelo (~60s), usando backup...")
+    except Exception as e:
+        print(f"[P0] Space caído: {e}")
+    return None
+
+
 def provider_qwen(prompt, max_tokens):
     """P1 — Qwen2.5-0.5B: ultra rápido, primary."""
     print("[P1] Qwen2.5-0.5B-Instruct...")
@@ -196,11 +224,8 @@ def provider_groq(prompt, max_tokens):
 
 
 def generate_text(prompt, max_tokens=150):
-    """
-    Cascada de 4 proveedores. Retorna el primero que funcione.
-    Orden: Qwen(P1) → SmolLM2(P2) → DeepSeek(P3) → Groq(P4)
-    """
     for provider_fn in [
+        provider_gemma2,
         provider_qwen,
         provider_smollm2,
         provider_deepseek,
@@ -208,7 +233,7 @@ def generate_text(prompt, max_tokens=150):
     ]:
         result = provider_fn(prompt, max_tokens)
         if result and result.get("text"):
-            print(f"[OK] Respondió: {result['source']}")
+            print(f"[OK] → {result['source']}")
             return result
 
     print("[ERROR] Todos los proveedores fallaron")
@@ -223,10 +248,12 @@ def health():
     return jsonify({
         'ok': True,
         'version': '2.0',
-        'primary_model': 'Qwen2.5-0.5B-Instruct',
+        'primary_model': 'Gemma2-2B via HF Space (P0)',
+        'hf_space_configured': bool(HF_SPACE_URL),
         'hf_token_configured': bool(HF_TOKEN),
         'groq_configured': bool(GROQ_KEY),
         'providers': [
+            'Gemma2-2B en HF Space (P0)',
             'Qwen2.5-0.5B (P1)',
             'SmolLM2-1.7B (P2)',
             'DeepSeek-R1-1.5B (P3)',
@@ -249,22 +276,28 @@ def generate():
 
     return jsonify({
         'error': 'Todos los proveedores fallaron',
-        'providers_tried': ['qwen', 'smollm2', 'deepseek', 'groq'],
-        'hint': 'Configurar HF_TOKEN en Render Dashboard para mayor cuota'
+        'providers_tried': ['gemma2', 'qwen', 'smollm2', 'deepseek', 'groq'],
+        'hint': 'Configurar HF_SPACE_URL y opcionalmente HF_TOKEN en Render Dashboard'
     }), 503
 
 # --- OpenAI Compatible Endpoints ---
 
 @app.route('/v1/models', methods=['GET'])
 def list_models():
-    models = [
+    models = []
+    if HF_SPACE_URL:
+        models.append({
+            "id": "gemma2-2b", "object": "model",
+            "created": int(time.time()), "owned_by": "you-via-hf-space"
+        })
+    models.extend([
         {"id": "qwen2.5-0.5b", "object": "model",
          "created": int(time.time()), "owned_by": "qwen"},
         {"id": "smollm2-1.7b", "object": "model",
          "created": int(time.time()), "owned_by": "huggingface"},
         {"id": "deepseek-r1-1.5b", "object": "model",
          "created": int(time.time()), "owned_by": "deepseek"},
-    ]
+    ])
     if GROQ_KEY:
         models.append({
             "id": "groq-llama3.1-8b", "object": "model",

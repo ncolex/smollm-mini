@@ -10,6 +10,9 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.0"
+      - key: HF_SPACE_URL
+        sync: false
+        # Valor: https://TUUSER-smollm-space.hf.space
       - key: HF_TOKEN
         sync: false
         # ↑ Setear manualmente en Render Dashboard
