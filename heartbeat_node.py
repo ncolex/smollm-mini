@@ -6,7 +6,9 @@ from datetime import datetime
 
 # Configuración
 RENDER_URL = "https://smollm-mini.onrender.com/generate"
-INTERVALO_MINUTOS = 33
+INTERVALO_SEGUNDOS = 14 * 60   # 840s — Render duerme a los 15min
+MAX_REINTENTOS = 3
+ESPERA_REINTENTO = 20        # segundos entre reintentos
 LOG_FILE = "heartbeat.json"
 
 def log_message(msg, type="info"):
@@ -28,59 +30,52 @@ def save_history(history):
         json.dump(history[:50], f, indent=2)
 
 def run_heartbeat():
-    log_message(f"❤️ Iniciando Nodo Heartbeat (Intervalo: {INTERVALO_MINUTOS} min)")
-    
-    while True:
-        try:
-            log_message("Enviando pulso a la Nube...")
-            
-            # 1. Llamada a la API en Render
-            start_time = time.time()
-            response = requests.post(
-                RENDER_URL,
-                json={
-                    "prompt": "Generá un reporte de estado técnico breve y futurista sobre el sistema 'OpenClaw Agent'.",
-                    "max_tokens": 100
-                },
-                timeout=60
-            )
-            
-            duration = round((time.time() - start_time) * 1000)
-            timestamp = datetime.now().strftime("%H:%M:%S")
-            
-            if response.status_code == 200:
-                data = response.json()
-                text = data.get('text', 'Sin respuesta').strip()
-                source = data.get('source', 'Unknown')
-                
-                log_message(f"✅ Respuesta recibida de {source} ({duration}ms)")
-                
-                # Guardar en historial
-                entry = {
-                    "time": timestamp,
-                    "status": "OK",
-                    "latency": duration,
-                    "source": source,
-                    "message": text
-                }
-            else:
-                log_message(f"❌ Error HTTP {response.status_code}", "error")
-                entry = {
-                    "time": timestamp,
-                    "status": "ERROR",
-                    "latency": duration,
-                    "source": "System",
-                    "message": f"Error: {response.text}"
-                }
+    log_message(f"❤️ Heartbeat iniciado — ping cada {INTERVALO_SEGUNDOS // 60} min")
 
-        except Exception as e:
-            log_message(f"❌ Error de conexión: {e}", "error")
+    while True:
+        entry = None
+        for intento in range(1, MAX_REINTENTOS + 1):
+            try:
+                log_message(f"Pulso intento {intento}/{MAX_REINTENTOS}...")
+                start_time = time.time()
+                response = requests.post(
+                    RENDER_URL,
+                    json={"prompt": "Di OK", "max_tokens": 5},
+                    timeout=90
+                )
+                duration = round((time.time() - start_time) * 1000)
+                timestamp = datetime.now().strftime("%H:%M:%S")
+
+                if response.status_code == 200:
+                    data = response.json()
+                    source = data.get('source', 'Unknown')
+                    log_message(f"✅ OK desde {source} ({duration}ms)")
+                    entry = {
+                        "time": timestamp,
+                        "status": "OK",
+                        "latency": duration,
+                        "source": source,
+                        "message": data.get('text', 'pong').strip()
+                    }
+                    break
+
+                else:
+                    log_message(f"❌ HTTP {response.status_code}", "error")
+                    if intento < MAX_REINTENTOS:
+                        time.sleep(ESPERA_REINTENTO)
+
+            except Exception as e:
+                log_message(f"❌ Conexión fallida: {e}", "error")
+                if intento < MAX_REINTENTOS:
+                    time.sleep(ESPERA_REINTENTO)
+
+        if entry is None:
             entry = {
                 "time": datetime.now().strftime("%H:%M:%S"),
                 "status": "FAIL",
                 "latency": 0,
-                "source": "Local Node",
-                "message": str(e)
+                "source": "heartbeat-node",
+                "message": f"Falló {MAX_REINTENTOS} reintentos"
             }
 
         # Actualizar JSON
@@ -88,9 +83,8 @@ def run_heartbeat():
         history.insert(0, entry)
         save_history(history)
 
-        # Esperar 33 minutos
-        log_message(f"💤 Durmiendo {INTERVALO_MINUTOS} minutos...")
-        time.sleep(INTERVALO_MINUTOS * 60)
+        log_message(f"💤 Durmiendo {INTERVALO_SEGUNDOS // 60} minutos...")
+        time.sleep(INTERVALO_SEGUNDOS)
 
 if __name__ == "__main__":
     run_heartbeat()

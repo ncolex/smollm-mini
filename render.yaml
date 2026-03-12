@@ -5,14 +5,15 @@ services:
     region: oregon
     plan: free
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app --bind 0.0.0.0:8080 --workers 1 --threads 1 --timeout 120
+    startCommand: gunicorn app:app --bind 0.0.0.0:8080 --workers 1 --threads 2 --timeout 180
+    autoDeploy: true
     envVars:
       - key: PYTHON_VERSION
-        value: 3.11.0
-      - key: HF_HOME
-        value: /tmp/huggingface
-      - key: PIP_NO_CACHE_DIR
-        value: "1"
-      - key: HF_API_TOKEN
-        value: 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
-    autoDeploy: true
+        value: "3.11.0"
+      - key: HF_TOKEN
+        sync: false
+        # ↑ Setear manualmente en Render Dashboard
+        # Obtener gratis en: huggingface.co → Settings → Access Tokens
+      - key: GROQ_KEY
+        sync: false
+        # ↑ Opcional. Dejar vacío si no se quiere usar Groq como backup
