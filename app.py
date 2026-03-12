@@ -7,6 +7,7 @@ app = Flask(__name__)
 
 HF_TOKEN = os.environ.get("HF_TOKEN", "")
 GROQ_KEY = os.environ.get("GROQ_KEY", "")
+HF_SPACE_URL = os.environ.get("HF_SPACE_URL", "")
 HF_BASE = "https://api-inference.huggingface.co/models"
 
 HOME_HTML = """
@@ -133,6 +134,42 @@ def _hf_call(model_id, prompt, max_tokens):
         return None
 
 
+def provider_gemma2(prompt, max_tokens):
+    """P0 — Gemma2 vía HF Space, primario opcional."""
+    if not HF_SPACE_URL:
+        return None
+
+    print("[P0] Gemma2 HF Space...")
+    try:
+        res = requests.post(
+            f"{HF_SPACE_URL.rstrip('/')}/generate",
+            json={"prompt": prompt, "max_tokens": max_tokens},
+            timeout=60,
+        )
+
+        if res.status_code == 200:
+            data = res.json()
+            text = (data.get("text", "") if isinstance(data, dict) else "").strip()
+            if text:
+                return {
+                    "text": text,
+                    "source": data.get("source", "Gemma2 HF Space (primary)")
+                    if isinstance(data, dict)
+                    else "Gemma2 HF Space (primary)",
+                }
+            return None
+
+        if res.status_code == 503:
+            print("[P0] Gemma2 HF Space cargando (503), pasando al siguiente proveedor...")
+            return None
+
+        print(f"[P0] Gemma2 HF Space respondió {res.status_code}: {res.text[:100]}")
+        return None
+    except Exception as e:
+        print(f"[P0] Gemma2 HF Space excepción: {e}")
+        return None
+
+
 def provider_qwen(prompt, max_tokens):
     """P1 — Qwen2.5-0.5B: ultra rápido, primary."""
     print("[P1] Qwen2.5-0.5B-Instruct...")
@@ -197,10 +234,11 @@ def provider_groq(prompt, max_tokens):
 
 def generate_text(prompt, max_tokens=150):
     """
-    Cascada de 4 proveedores. Retorna el primero que funcione.
-    Orden: Qwen(P1) → SmolLM2(P2) → DeepSeek(P3) → Groq(P4)
+    Cascada de 5 proveedores. Retorna el primero que funcione.
+    Orden: Gemma2(P0) → Qwen(P1) → SmolLM2(P2) → DeepSeek(P3) → Groq(P4)
     """
     for provider_fn in [
+        provider_gemma2,
         provider_qwen,
         provider_smollm2,
         provider_deepseek,
@@ -227,6 +265,7 @@ def health():
         'hf_token_configured': bool(HF_TOKEN),
         'groq_configured': bool(GROQ_KEY),
         'providers': [
+            'Gemma2 HF Space (P0 - opcional si HF_SPACE_URL)',
             'Qwen2.5-0.5B (P1)',
             'SmolLM2-1.7B (P2)',
             'DeepSeek-R1-1.5B (P3)',
@@ -249,7 +288,7 @@ def generate():
 
     return jsonify({
         'error': 'Todos los proveedores fallaron',
-        'providers_tried': ['qwen', 'smollm2', 'deepseek', 'groq'],
+        'providers_tried': ['gemma2', 'qwen', 'smollm2', 'deepseek', 'groq'],
         'hint': 'Configurar HF_TOKEN en Render Dashboard para mayor cuota'
     }), 503
 
