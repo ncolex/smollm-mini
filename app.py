@@ -79,16 +79,39 @@ async function sendPrompt() {
 </html>
 """
 
+
+def _success(provider, text, source):
+    return {
+        "ok": True,
+        "provider": provider,
+        "text": text,
+        "source": source
+    }
+
+
+def _failure(provider, error, status_code=None):
+    payload = {
+        "ok": False,
+        "provider": provider,
+        "error": str(error)
+    }
+    if status_code is not None:
+        payload["status_code"] = status_code
+    return payload
+
+
 def add_cors_headers(response):
     response.headers['Access-Control-Allow-Origin'] = '*'
     response.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization'
     response.headers['Access-Control-Allow-Methods'] = 'GET,PUT,POST,DELETE,OPTIONS'
     return response
 
+
 @app.before_request
 def handle_options():
     if request.method == 'OPTIONS':
         return add_cors_headers(Response())
+
 
 @app.after_request
 def after_request(response):
@@ -99,7 +122,6 @@ def _hf_call(model_id, prompt, max_tokens):
     """
     Llama a HuggingFace Serverless Inference API.
     Funciona con o sin token (con token tiene más cuota).
-    Retorna el texto generado o None si falla.
     """
     url = f"{HF_BASE}/{model_id}"
     headers = {"Content-Type": "application/json"}
@@ -132,14 +154,21 @@ def _hf_call(model_id, prompt, max_tokens):
             else:
                 text = str(data)
             text = text.strip()
-            return text if text else None
+            if text:
+                return {"ok": True, "text": text}
+            return {"ok": False, "error": "Respuesta vacía del modelo", "status_code": 200}
 
         print(f"[HF] {model_id} respondió {res.status_code}: {res.text[:100]}")
-        return None
+        return {
+            "ok": False,
+            "error": f"HF respondió {res.status_code}",
+            "status_code": res.status_code,
+            "detail": res.text[:200]
+        }
 
     except Exception as e:
         print(f"[HF] {model_id} excepción: {e}")
-        return None
+        return {"ok": False, "error": f"Excepción: {e}"}
 
 
 def provider_gemma2(prompt, max_tokens):
@@ -147,69 +176,79 @@ def provider_gemma2(prompt, max_tokens):
     P0 — Tu Gemma2-2B en HF Space.
     Primario absoluto. Es tu modelo propio.
     """
+    provider_name = "gemma2"
     if not HF_SPACE_URL:
-        return None
+        return _failure(provider_name, "HF_SPACE_URL no configurada")
+
     print("[P0] Tu HF Space Gemma2-2B...")
+    headers = {"Content-Type": "application/json"}
+    if HF_TOKEN:
+        headers["Authorization"] = f"Bearer {HF_TOKEN}"
+
     try:
         res = requests.post(
             f"{HF_SPACE_URL.rstrip('/')}/generate",
+            headers=headers,
             json={"prompt": prompt, "max_tokens": max_tokens},
             timeout=60
         )
         if res.status_code == 200:
             data = res.json()
-            return {
-                "text": data.get("text", ""),
-                "source": data.get("source", "HF Space Gemma2-2B (tuyo)")
-            }
+            text = data.get("text", "").strip()
+            if not text:
+                return _failure(provider_name, "HF Space respondió vacío", 200)
+            return _success(
+                provider_name,
+                text,
+                data.get("source", "HF Space Gemma2-2B (tuyo)")
+            )
+        if res.status_code in (401, 403):
+            return _failure(provider_name, "No autorizado al acceder al HF Space (401/403)", res.status_code)
         if res.status_code == 503:
-            print("[P0] Space cargando modelo (~60s), usando backup...")
+            return _failure(provider_name, "HF Space cargando modelo (503)", 503)
+        return _failure(provider_name, f"HF Space respondió {res.status_code}", res.status_code)
     except Exception as e:
-        print(f"[P0] Space caído: {e}")
-    return None
+        return _failure(provider_name, f"Excepción: {e}")
 
 
 def provider_qwen(prompt, max_tokens):
     """P1 — Qwen2.5-0.5B: ultra rápido, primary."""
+    provider_name = "qwen"
     print("[P1] Qwen2.5-0.5B-Instruct...")
     formatted = f"<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
-    text = _hf_call("Qwen/Qwen2.5-0.5B-Instruct", formatted, max_tokens)
-    if text:
-        return {"text": text, "source": "Qwen2.5-0.5B (primary)"}
-    return None
+    result = _hf_call("Qwen/Qwen2.5-0.5B-Instruct", formatted, max_tokens)
+    if result.get("ok"):
+        return _success(provider_name, result["text"], "Qwen2.5-0.5B (primary)")
+    return _failure(provider_name, result.get("error", "Error desconocido"), result.get("status_code"))
 
 
 def provider_smollm2(prompt, max_tokens):
     """P2 — SmolLM2-1.7B: mejor calidad, backup-1."""
+    provider_name = "smollm2"
     print("[P2] SmolLM2-1.7B-Instruct...")
     formatted = f"<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
-    text = _hf_call(
-        "HuggingFaceTB/SmolLM2-1.7B-Instruct",
-        formatted,
-        max_tokens
-    )
-    if text:
-        return {"text": text, "source": "SmolLM2-1.7B (backup-1)"}
-    return None
+    result = _hf_call("HuggingFaceTB/SmolLM2-1.7B-Instruct", formatted, max_tokens)
+    if result.get("ok"):
+        return _success(provider_name, result["text"], "SmolLM2-1.7B (backup-1)")
+    return _failure(provider_name, result.get("error", "Error desconocido"), result.get("status_code"))
 
 
 def provider_deepseek(prompt, max_tokens):
     """P3 — DeepSeek-R1-Distill-1.5B: razonamiento, backup-2."""
+    provider_name = "deepseek"
     print("[P3] DeepSeek-R1-Distill-Qwen-1.5B...")
-    text = _hf_call(
-        "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B",
-        prompt,
-        max_tokens
-    )
-    if text:
-        return {"text": text, "source": "DeepSeek-R1-1.5B (backup-2)"}
-    return None
+    result = _hf_call("deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B", prompt, max_tokens)
+    if result.get("ok"):
+        return _success(provider_name, result["text"], "DeepSeek-R1-1.5B (backup-2)")
+    return _failure(provider_name, result.get("error", "Error desconocido"), result.get("status_code"))
 
 
 def provider_groq(prompt, max_tokens):
     """P4 — Groq Llama3.1: backup externo, solo si GROQ_KEY existe."""
+    provider_name = "groq"
     if not GROQ_KEY:
-        return None
+        return _failure(provider_name, "GROQ_KEY no configurada")
+
     print("[P4] Groq Llama3.1-8B...")
     try:
         res = requests.post(
@@ -223,15 +262,18 @@ def provider_groq(prompt, max_tokens):
             timeout=12
         )
         if res.status_code == 200:
-            text = res.json()["choices"][0]["message"]["content"]
-            return {"text": text, "source": "Groq Llama3.1 (backup-3)"}
-        print(f"[P4] Groq respondió {res.status_code}")
+            text = res.json()["choices"][0]["message"]["content"].strip()
+            if text:
+                return _success(provider_name, text, "Groq Llama3.1 (backup-3)")
+            return _failure(provider_name, "Groq respondió vacío", 200)
+        return _failure(provider_name, f"Groq respondió {res.status_code}", res.status_code)
     except Exception as e:
-        print(f"[P4] Groq excepción: {e}")
-    return None
+        return _failure(provider_name, f"Excepción: {e}")
 
 
 def generate_text(prompt, max_tokens=150):
+    attempts = []
+
     for provider_fn in [
         provider_gemma2,
         provider_qwen,
@@ -240,16 +282,29 @@ def generate_text(prompt, max_tokens=150):
         provider_groq,
     ]:
         result = provider_fn(prompt, max_tokens)
-        if result and result.get("text"):
+
+        attempts.append({
+            "provider": result.get("provider", provider_fn.__name__),
+            "status": "ok" if result.get("ok") else "failed",
+            "status_code": result.get("status_code"),
+            "error": None if result.get("ok") else result.get("error")
+        })
+
+        if result.get("ok") and result.get("text"):
             print(f"[OK] → {result['source']}")
-            return result
+            return {
+                "text": result["text"],
+                "source": result["source"]
+            }, attempts
 
     print("[ERROR] Todos los proveedores fallaron")
-    return None
+    return None, attempts
+
 
 @app.route('/', methods=['GET'])
 def home():
     return render_template_string(HOME_HTML)
+
 
 @app.route('/health', methods=['GET'])
 def health():
@@ -270,6 +325,7 @@ def health():
         'timestamp': int(time.time())
     })
 
+
 @app.route('/generate', methods=['POST'])
 def generate():
     """Endpoint legacy mantenido como wrapper"""
@@ -278,24 +334,29 @@ def generate():
     if not prompt:
         return jsonify({'error': 'Falta el prompt'}), 400
 
-    result = generate_text(prompt)
+    result, attempts = generate_text(prompt)
     if result:
         return jsonify(result)
 
-    missing_config = []
+    missing_required = []
+    missing_optional = []
+
     if not HF_SPACE_URL:
-        missing_config.append('HF_SPACE_URL')
+        missing_required.append('HF_SPACE_URL')
     if not HF_TOKEN:
-        missing_config.append('HF_TOKEN (opcional, recomendado)')
+        missing_optional.append('HF_TOKEN (recomendado para cuota/acceso en HF)')
     if not GROQ_KEY:
-        missing_config.append('GROQ_KEY (opcional, backup externo)')
+        missing_optional.append('GROQ_KEY (opcional, backup externo)')
 
     return jsonify({
         'error': 'Todos los proveedores fallaron',
         'providers_tried': ['gemma2', 'qwen', 'smollm2', 'deepseek', 'groq'],
-        'missing_config': missing_config,
-        'hint': 'Configura variables en Render Dashboard: HF_SPACE_URL (requerida para Gemma2), HF_TOKEN (recomendado), GROQ_KEY (opcional).'
+        'attempts': attempts,
+        'missing_required': missing_required,
+        'missing_optional': missing_optional,
+        'hint': 'Configura HF_SPACE_URL para Gemma2. HF_TOKEN y GROQ_KEY son opcionales, pero mejoran disponibilidad y cuota.'
     }), 503
+
 
 # --- OpenAI Compatible Endpoints ---
 
@@ -322,6 +383,7 @@ def list_models():
         })
     return jsonify({"object": "list", "data": models})
 
+
 @app.route('/v1/chat/completions', methods=['POST'])
 def chat_completions():
     try:
@@ -344,10 +406,16 @@ def chat_completions():
         if not prompt:
             return jsonify({'error': {'message': 'No prompt content found', 'type': 'invalid_request_error'}}), 400
 
-        result = generate_text(prompt)
+        result, attempts = generate_text(prompt)
 
         if not result:
-            return jsonify({'error': {'message': 'No providers configured or generation failed', 'type': 'api_error'}}), 500
+            return jsonify({
+                'error': {
+                    'message': 'No providers configured or generation failed',
+                    'type': 'api_error',
+                    'attempts': attempts
+                }
+            }), 500
 
         return jsonify({
             "id": f"chatcmpl-{int(time.time())}",
@@ -370,6 +438,7 @@ def chat_completions():
         })
     except Exception as e:
         return jsonify({'error': {'message': str(e), 'type': 'server_error'}}), 500
+
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
