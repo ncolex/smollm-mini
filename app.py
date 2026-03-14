@@ -58,7 +58,15 @@ async function sendPrompt() {
       body: JSON.stringify({ prompt })
     });
     const data = await res.json();
-    const source = data.source || 'unknown';
+    if (!res.ok) {
+      const errorMsg = data.error || 'Error desconocido';
+      out.innerHTML =
+        `<span style="color:#f87171">✗ ${errorMsg}</span>\n\n` +
+        JSON.stringify(data, null, 2);
+      return;
+    }
+
+    const source = data.source || 'provider';
     out.innerHTML =
       `<span style="color:#3fb950">✓ ${source}</span>\n\n` +
       (data.text || JSON.stringify(data, null, 2));
@@ -274,10 +282,19 @@ def generate():
     if result:
         return jsonify(result)
 
+    missing_config = []
+    if not HF_SPACE_URL:
+        missing_config.append('HF_SPACE_URL')
+    if not HF_TOKEN:
+        missing_config.append('HF_TOKEN (opcional, recomendado)')
+    if not GROQ_KEY:
+        missing_config.append('GROQ_KEY (opcional, backup externo)')
+
     return jsonify({
         'error': 'Todos los proveedores fallaron',
         'providers_tried': ['gemma2', 'qwen', 'smollm2', 'deepseek', 'groq'],
-        'hint': 'Configurar HF_SPACE_URL y opcionalmente HF_TOKEN en Render Dashboard'
+        'missing_config': missing_config,
+        'hint': 'Configura variables en Render Dashboard: HF_SPACE_URL (requerida para Gemma2), HF_TOKEN (recomendado), GROQ_KEY (opcional).'
     }), 503
 
 # --- OpenAI Compatible Endpoints ---
